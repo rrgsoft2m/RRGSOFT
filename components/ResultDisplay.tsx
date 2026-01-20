@@ -11,21 +11,48 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ content }) => {
   const [activeTab, setActiveTab] = useState<'presentation' | 'tests' | 'qa' | 'others'>('presentation');
   const [slidesWithImages, setSlidesWithImages] = useState(content.presentation);
   const [generatingImages, setGeneratingImages] = useState(false);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   // Testlar uchun holatlar
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [showTestResults, setShowTestResults] = useState(false);
   const [testScore, setTestScore] = useState(0);
 
+  // Savol-javob uchun ochiq indekslar
+  const [openQAIndices, setOpenQAIndices] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     const fetchImages = async () => {
       setGeneratingImages(true);
+      setQuotaExceeded(false);
       const updatedSlides = [...content.presentation];
-      for (let i = 0; i < Math.min(updatedSlides.length, 4); i++) {
+      
+      for (let i = 0; i < updatedSlides.length; i++) {
+        // Agar rasm hali yo'q bo'lsa generatsiya qilamiz
         if (!updatedSlides[i].imageUrl && updatedSlides[i].imagePrompt) {
-          const url = await generateImageForSlide(updatedSlides[i].imagePrompt!);
-          updatedSlides[i].imageUrl = url;
-          setSlidesWithImages([...updatedSlides]);
+          try {
+            const url = await generateImageForSlide(updatedSlides[i].imagePrompt!);
+            if (url) {
+              updatedSlides[i].imageUrl = url;
+              setSlidesWithImages([...updatedSlides]);
+            }
+          } catch (error: any) {
+            console.warn(`Slayd ${i + 1} uchun AI rasm limiti urildi.`);
+            if (error.message === "QUOTA_EXCEEDED") {
+              setQuotaExceeded(true);
+              // Kvota tugaganda barcha qolgan rasmlarga Unsplash placeholder qo'yamiz
+              for (let j = i; j < updatedSlides.length; j++) {
+                if (!updatedSlides[j].imageUrl) {
+                  // Mavzuga mos chiroyli rasm (Picsum yoki Unsplash)
+                  const keyword = encodeURIComponent(updatedSlides[j].title || content.subject);
+                  updatedSlides[j].imageUrl = `https://picsum.photos/seed/${keyword+j}/800/450`;
+                }
+              }
+              setSlidesWithImages([...updatedSlides]);
+              setGeneratingImages(false);
+              return; 
+            }
+          }
         }
       }
       setGeneratingImages(false);
@@ -68,6 +95,18 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ content }) => {
     setTestScore(0);
   };
 
+  const toggleQA = (index: number) => {
+    setOpenQAIndices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
   const tabs = [
     { id: 'presentation', label: 'Taqdimot', icon: 'fa-desktop' },
     { id: 'tests', label: 'Interaktiv Test', icon: 'fa-check-double' },
@@ -97,16 +136,23 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ content }) => {
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 min-h-[500px]">
         {activeTab === 'presentation' && (
           <div className="p-8">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                <h2 className="text-2xl font-bold text-gray-800 flex items-center">
                 <i className="fas fa-chalkboard-teacher text-blue-500 mr-3"></i>
                 Taqdimot Slaydlari
               </h2>
-              {generatingImages && (
-                <span className="text-xs text-blue-500 animate-pulse font-bold flex items-center">
-                  <i className="fas fa-magic mr-2"></i> Rasmlar yuklanmoqda...
-                </span>
-              )}
+              <div className="flex flex-col items-end">
+                {generatingImages && (
+                  <span className="text-xs text-blue-500 animate-pulse font-bold flex items-center">
+                    <i className="fas fa-magic mr-2"></i> Rasmlar yaratilmoqda ({slidesWithImages.filter(s => s.imageUrl?.startsWith('data:')).length}/{slidesWithImages.length})...
+                  </span>
+                )}
+                {quotaExceeded && (
+                  <span className="text-[10px] text-orange-500 font-bold bg-orange-50 px-3 py-1 rounded-full border border-orange-100 flex items-center">
+                    <i className="fas fa-info-circle mr-2"></i> AI Limiti: Ba'zi rasmlar zaxira tizimidan yuklandi.
+                  </span>
+                )}
+              </div>
             </div>
             <div className="space-y-12">
               {slidesWithImages.map((slide, index) => (
@@ -116,13 +162,27 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ content }) => {
                     <h3 className="text-2xl font-bold text-gray-800 mb-4">{slide.title}</h3>
                     <p className="text-gray-600 text-lg leading-relaxed">{slide.content}</p>
                   </div>
-                  <div className="flex-1 w-full aspect-video rounded-2xl overflow-hidden bg-gray-200 shadow-inner relative">
+                  <div className="flex-1 w-full aspect-video rounded-2xl overflow-hidden bg-gray-200 shadow-inner relative group">
                     {slide.imageUrl ? (
-                      <img src={slide.imageUrl} alt={slide.title} className="w-full h-full object-cover" />
+                      <div className="relative w-full h-full">
+                        <img 
+                          src={slide.imageUrl} 
+                          alt={slide.title} 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                        />
+                        {!slide.imageUrl.startsWith('data:') && (
+                           <div className="absolute top-2 right-2 bg-black/30 backdrop-blur px-2 py-1 rounded text-[8px] text-white font-bold uppercase tracking-widest">
+                             Visual Fallback
+                           </div>
+                        )}
+                      </div>
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 italic p-4 text-center">
-                        <i className="fas fa-image text-4xl mb-2 opacity-20"></i>
-                        <span className="text-sm">Vizual rasm yaratilmoqda...</span>
+                        <i className="fas fa-image animate-pulse opacity-20 text-4xl mb-2"></i>
+                        <span className="text-sm">Rasm tayyorlanmoqda...</span>
+                        <div className="w-8 h-1 bg-blue-200 mt-4 overflow-hidden rounded-full">
+                          <div className="w-full h-full bg-blue-500 animate-[loading_2s_ease-in-out_infinite]"></div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -264,12 +324,34 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({ content }) => {
               Savol-Javob Materiallari
             </h2>
             <div className="space-y-4">
-              {content.qa.map((item, index) => (
-                <div key={index} className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow">
-                    <h3 className="font-bold text-gray-800 mb-2">{index + 1}. {item.question}</h3>
-                    <p className="text-gray-600 italic pl-4 border-l-4 border-orange-200">{item.answer}</p>
-                </div>
-              ))}
+              {content.qa.map((item, index) => {
+                const isOpen = openQAIndices.has(index);
+                return (
+                  <div 
+                    key={index} 
+                    className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden transition-all duration-300 hover:border-orange-200"
+                  >
+                    <button 
+                      onClick={() => toggleQA(index)}
+                      className="w-full flex items-center justify-between p-6 text-left hover:bg-orange-50/30 transition-colors focus:outline-none"
+                    >
+                      <h3 className="font-bold text-gray-800 pr-4 flex-1">
+                        <span className="text-orange-500 mr-2">{index + 1}.</span>
+                        {item.question}
+                      </h3>
+                      <i className={`fas fa-chevron-down text-gray-300 transition-transform duration-300 ${isOpen ? 'rotate-180 text-orange-400' : ''}`}></i>
+                    </button>
+                    
+                    <div className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'} overflow-hidden`}>
+                      <div className="px-6 pb-6">
+                        <div className="p-4 bg-orange-50/50 rounded-xl border-l-4 border-orange-400">
+                          <p className="text-gray-700 italic leading-relaxed">{item.answer}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

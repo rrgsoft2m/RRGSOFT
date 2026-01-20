@@ -17,14 +17,22 @@ export const generateImageForSlide = async (prompt: string): Promise<string> => 
       }
     });
 
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
     }
     return '';
-  } catch (error) {
-    console.error("Image generation error:", error);
+  } catch (error: any) {
+    const errorStr = JSON.stringify(error);
+    console.error("Image generation error details:", errorStr);
+    
+    // Turli xil formatdagi 429 xatolarini tekshirish
+    if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED') || error.message?.includes('429')) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
     return '';
   }
 };
@@ -49,89 +57,97 @@ export const generateEducationalMaterials = async (params: SearchParams): Promis
 
   Javobni FAQAT JSON formatida qaytaring.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          presentation: {
-            type: Type.ARRAY,
-            items: {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            presentation: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  content: { type: Type.STRING },
+                  imagePrompt: { type: Type.STRING }
+                },
+                required: ["title", "content", "imagePrompt"]
+              }
+            },
+            tests: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING },
+                  question: { type: Type.STRING },
+                  options: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  answer: { type: Type.STRING }
+                },
+                required: ["type", "question", "answer"]
+              }
+            },
+            qa: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  question: { type: Type.STRING },
+                  answer: { type: Type.STRING }
+                },
+                required: ["question", "answer"]
+              }
+            },
+            crossword: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  clue: { type: Type.STRING },
+                  answer: { type: Type.STRING }
+                },
+                required: ["clue", "answer"]
+              }
+            },
+            logicPuzzle: {
+              type: Type.OBJECT,
+              properties: {
+                puzzle: { type: Type.STRING },
+                answer: { type: Type.STRING }
+              },
+              required: ["puzzle", "answer"]
+            },
+            miniGame: {
               type: Type.OBJECT,
               properties: {
                 title: { type: Type.STRING },
-                content: { type: Type.STRING },
-                imagePrompt: { type: Type.STRING }
+                description: { type: Type.STRING },
+                rules: { type: Type.ARRAY, items: { type: Type.STRING } }
               },
-              required: ["title", "content", "imagePrompt"]
+              required: ["title", "description", "rules"]
             }
           },
-          tests: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                type: { type: Type.STRING },
-                question: { type: Type.STRING },
-                options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                answer: { type: Type.STRING }
-              },
-              required: ["type", "question", "answer"]
-            }
-          },
-          qa: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                question: { type: Type.STRING },
-                answer: { type: Type.STRING }
-              },
-              required: ["question", "answer"]
-            }
-          },
-          crossword: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                clue: { type: Type.STRING },
-                answer: { type: Type.STRING }
-              },
-              required: ["clue", "answer"]
-            }
-          },
-          logicPuzzle: {
-            type: Type.OBJECT,
-            properties: {
-              puzzle: { type: Type.STRING },
-              answer: { type: Type.STRING }
-            },
-            required: ["puzzle", "answer"]
-          },
-          miniGame: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              description: { type: Type.STRING },
-              rules: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["title", "description", "rules"]
-          }
-        },
-        required: ["presentation", "tests", "qa", "crossword", "logicPuzzle", "miniGame"]
+          required: ["presentation", "tests", "qa", "crossword", "logicPuzzle", "miniGame"]
+        }
       }
+    });
+
+    const content: EducationalContent = JSON.parse(response.text.trim());
+    content.id = Math.random().toString(36).substr(2, 9);
+    content.timestamp = Date.now();
+    content.subject = params.subject;
+    content.topic = params.topic;
+
+    return content;
+  } catch (error: any) {
+    const errorStr = JSON.stringify(error);
+    if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED')) {
+      throw new Error("QUOTA_EXCEEDED");
     }
-  });
-
-  const content: EducationalContent = JSON.parse(response.text.trim());
-  content.id = Math.random().toString(36).substr(2, 9);
-  content.timestamp = Date.now();
-  content.subject = params.subject;
-  content.topic = params.topic;
-
-  return content;
+    throw error;
+  }
 };

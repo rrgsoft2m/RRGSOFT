@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 
 interface AuthProps {
@@ -8,36 +8,79 @@ interface AuthProps {
 
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: ''
   });
 
+  // Xatolik yoki muvaffaqiyat xabari chiqqanda 5 soniyadan keyin yo'qolishi uchun
+  useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError(null);
+        setSuccess(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
     const users = JSON.parse(localStorage.getItem('users') || '[]');
     
     if (isLogin) {
-      const user = users.find((u: User) => u.email === formData.email && u.password === formData.password);
-      if (user) {
-        onLogin(user);
-      } else {
-        alert("Email yoki parol noto'g'ri!");
-      }
-    } else {
-      if (!formData.fullName || !formData.email || !formData.password) {
-        alert("Barcha maydonlarni to'ldiring!");
+      // Login qilish logikasi
+      const user = users.find((u: User) => u.email.toLowerCase() === formData.email.toLowerCase());
+      
+      if (!user) {
+        setError("Bunday emailga ega foydalanuvchi topilmadi!");
         return;
       }
-      const newUser = {
+
+      if (user.password !== formData.password) {
+        setError("Maxfiy parol noto'g'ri kiritildi!");
+        return;
+      }
+
+      onLogin(user);
+    } else {
+      // Ro'yxatdan o'tish logikasi
+      if (!formData.fullName || !formData.email || !formData.password) {
+        setError("Iltimos, barcha maydonlarni to'ldiring!");
+        return;
+      }
+
+      if (formData.password.length < 6) {
+        setError("Parol kamida 6 ta belgidan iborat bo'lishi kerak!");
+        return;
+      }
+
+      const emailExists = users.some((u: User) => u.email.toLowerCase() === formData.email.toLowerCase());
+      if (emailExists) {
+        setError("Bu email manzili allaqachon ro'yxatdan o'tgan!");
+        return;
+      }
+
+      const newUser: User = {
         id: Math.random().toString(36).substr(2, 9),
         fullName: formData.fullName,
         email: formData.email,
         password: formData.password
       };
-      localStorage.setItem('users', JSON.stringify([...users, newUser]));
-      onLogin(newUser);
+
+      const updatedUsers = [...users, newUser];
+      localStorage.setItem('users', JSON.stringify(updatedUsers));
+      
+      setSuccess("Muvaffaqiyatli ro'yxatdan o'tdingiz! Endi tizimga kirishingiz mumkin.");
+      setIsLogin(true);
+      // Parolni tozalash, lekin emailni qoldirish login uchun qulaylik yaratadi
+      setFormData(prev => ({ ...prev, password: '' }));
     }
   };
 
@@ -49,12 +92,27 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl animate-pulse [animation-delay:-1s]"></div>
 
         <div className="glass-card p-10 md:p-14 rounded-[40px] shadow-2xl relative z-10 border border-white">
-          <div className="text-center mb-12">
+          <div className="text-center mb-10">
             <h2 className="text-4xl font-black text-gray-900 mb-4 tracking-tight">
-              {isLogin ? "Hush kelibsiz" : "Ro'yxatdan o'ting"}
+              {isLogin ? "Xush kelibsiz!" : "Ro'yxatdan o'ting"}
             </h2>
             <p className="text-gray-400 font-medium">O'qituvchi AI platformasiga kirish</p>
           </div>
+
+          {/* Error and Success Messages */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center space-x-3 text-red-600 animate-bounce">
+              <i className="fas fa-exclamation-circle flex-shrink-0"></i>
+              <span className="text-sm font-bold">{error}</span>
+            </div>
+          )}
+
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-100 rounded-2xl flex items-center space-x-3 text-green-600">
+              <i className="fas fa-check-circle flex-shrink-0"></i>
+              <span className="text-sm font-bold">{success}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {!isLogin && (
@@ -64,7 +122,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                   <i className="fas fa-user absolute left-6 top-1/2 -translate-y-1/2 text-gray-300"></i>
                   <input
                     type="text"
-                    required
                     className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-medium text-gray-900"
                     placeholder="Eshmat Toshmatov"
                     value={formData.fullName}
@@ -80,7 +137,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <i className="fas fa-envelope absolute left-6 top-1/2 -translate-y-1/2 text-gray-300"></i>
                 <input
                   type="email"
-                  required
                   className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-medium text-gray-900"
                   placeholder="name@school.uz"
                   value={formData.email}
@@ -95,7 +151,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <i className="fas fa-lock absolute left-6 top-1/2 -translate-y-1/2 text-gray-300"></i>
                 <input
                   type="password"
-                  required
                   className="w-full pl-14 pr-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all font-medium text-gray-900"
                   placeholder="••••••••"
                   value={formData.password}
@@ -114,7 +169,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
           <div className="mt-10 text-center">
             <button
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setError(null);
+                setSuccess(null);
+              }}
               className="text-blue-500 font-extrabold hover:text-blue-700 transition-colors text-sm uppercase tracking-widest"
             >
               {isLogin ? "Yangi hisob yaratish →" : "← Tizimga kirish"}

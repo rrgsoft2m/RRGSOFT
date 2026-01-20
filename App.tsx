@@ -21,9 +21,13 @@ const App: React.FC = () => {
     const timer = setTimeout(() => {
       const savedUser = localStorage.getItem('currentUser');
       if (savedUser) {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        loadHistory(user.id);
+        try {
+          const user = JSON.parse(savedUser);
+          setCurrentUser(user);
+          loadHistory(user.id);
+        } catch (e) {
+          localStorage.removeItem('currentUser');
+        }
       }
       setInitializing(false);
     }, 2500);
@@ -32,8 +36,40 @@ const App: React.FC = () => {
   }, []);
 
   const loadHistory = (userId: string) => {
-    const savedHistory = JSON.parse(localStorage.getItem(`history_${userId}`) || '[]');
-    setHistory(savedHistory);
+    try {
+      const savedHistory = JSON.parse(localStorage.getItem(`history_${userId}`) || '[]');
+      setHistory(Array.isArray(savedHistory) ? savedHistory : []);
+    } catch (e) {
+      setHistory([]);
+    }
+  };
+
+  const saveHistoryToStorage = (userId: string, newHistory: EducationalContent[]) => {
+    // LocalStorage hajmini tejash uchun rasmlarni (imageUrl) tarixda saqlamaymiz
+    // Chunki base64 rasmlar 5MB kvotani juda tez to'ldiradi
+    const historyToSave = newHistory.map(item => ({
+      ...item,
+      presentation: item.presentation.map(slide => ({ ...slide, imageUrl: undefined }))
+    })).slice(0, 10); // Oxirgi 10 ta dars
+
+    try {
+      localStorage.setItem(`history_${userId}`, JSON.stringify(historyToSave));
+      setHistory(historyToSave);
+    } catch (e) {
+      console.warn("Storage to'ldi, tarix qisqartirilmoqda...");
+      if (historyToSave.length > 1) {
+        saveHistoryToStorage(userId, historyToSave.slice(0, -1));
+      } else {
+        localStorage.removeItem(`history_${userId}`);
+      }
+    }
+  };
+
+  const clearHistory = () => {
+    if (currentUser && window.confirm("Barcha tarixni o'chirmoqchimisiz?")) {
+      localStorage.removeItem(`history_${currentUser.id}`);
+      setHistory([]);
+    }
   };
 
   const handleLogin = (user: User) => {
@@ -59,17 +95,20 @@ const App: React.FC = () => {
       
       if (currentUser) {
         const newHistory = [result, ...history];
-        setHistory(newHistory);
-        localStorage.setItem(`history_${currentUser.id}`, JSON.stringify(newHistory));
+        saveHistoryToStorage(currentUser.id, newHistory);
       }
 
       setTimeout(() => {
         const resultSection = document.getElementById('result-section');
         resultSection?.scrollIntoView({ behavior: 'smooth' });
       }, 500);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Material yaratishda xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring.");
+      if (err.message === 'QUOTA_EXCEEDED') {
+        setError("AI xizmatining so'rovlar limiti tugadi. Iltimos, 1 daqiqa kutib qayta urinib ko'ring yoki boshqa mavzu tanlang.");
+      } else {
+        setError("Material yaratishda xatolik yuz berdi. Internet aloqasini tekshiring va qaytadan urinib ko'ring.");
+      }
     } finally {
       setLoading(false);
     }
@@ -159,9 +198,9 @@ const App: React.FC = () => {
                     <i className="fas fa-brain text-4xl text-blue-600 animate-pulse"></i>
                   </div>
                 </div>
-                <h3 className="text-3xl font-black text-gray-900 mb-4 tracking-tight">Materiallar generatsiya qilinmoqda</h3>
+                <h3 className="text-3xl font-black text-gray-900 mb-4 tracking-tight">Materiallar tayyorlanmoqda</h3>
                 <p className="text-gray-600 max-w-lg mx-auto text-lg leading-relaxed">
-                  O'qituvchi AI siz uchun eng sara dars rejalarini, testlarni va kreativ rasmlarni tayyorlamoqda...
+                  Sun'iy intellekt siz uchun eng sara dars rejalari va interaktiv topshiriqlarni yaratmoqda...
                 </p>
               </div>
             )}
@@ -186,6 +225,14 @@ const App: React.FC = () => {
                 <span className="w-2 h-8 bg-blue-600 rounded-full mr-4"></span>
                 Materiallar Tarixi
               </h2>
+              {history.length > 0 && (
+                <button 
+                  onClick={clearHistory}
+                  className="text-xs font-bold text-red-500 hover:text-red-700 uppercase tracking-widest flex items-center"
+                >
+                  <i className="fas fa-trash-alt mr-2"></i> Tozalash
+                </button>
+              )}
             </div>
             {history.length === 0 ? (
               <div className="glass-card p-20 rounded-[40px] text-center">
@@ -233,7 +280,7 @@ const App: React.FC = () => {
         <div className="flex items-center justify-center space-x-2 mb-4">
           <img src="https://buxedu.uz/static/images/logo.png" alt="Logo" className="h-8 w-auto opacity-50 grayscale hover:grayscale-0 transition-all cursor-pointer" />
         </div>
-        <p className="text-gray-500 text-sm font-medium">© 2024 O'qituvchi AI Ta'lim Yordamchisi</p>
+        <p className="text-gray-500 text-sm font-medium">© 2026 O'qituvchi AI Ta'lim Yordamchisi</p>
         <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest">
           Sirdaryo viloyati maktabgacha va maktab ta'limi boshqarmasi bilan hamkorlikda <a href="https://t.me/rrgfcoder" target="_blank" rel="noopener noreferrer" className="text-blue-500 font-bold hover:underline">RRGSOFT</a>
         </p>
