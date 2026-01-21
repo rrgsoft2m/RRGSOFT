@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EducationalContent, SearchParams, Slide } from "../types";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || 'AIzaSyBKn3Jp2h0CKFTbCw6F8XLCUpF77nnM0fU' });
 
 export const generateImageForSlide = async (prompt: string): Promise<string> => {
   try {
