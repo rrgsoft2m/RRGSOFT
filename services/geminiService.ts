@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EducationalContent, SearchParams, Slide } from "../types";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || 'AIzaSyBKn3Jp2h0CKFTbCw6F8XLCUpF77nnM0fU' });
+const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 export const generateImageForSlide = async (prompt: string): Promise<string> => {
   try {
@@ -29,7 +29,6 @@ export const generateImageForSlide = async (prompt: string): Promise<string> => 
     const errorStr = JSON.stringify(error);
     console.error("Image generation error details:", errorStr);
     
-    // Turli xil formatdagi 429 xatolarini tekshirish
     if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED') || error.message?.includes('429')) {
       throw new Error("QUOTA_EXCEEDED");
     }
