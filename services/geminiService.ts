@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { EducationalContent, SearchParams, Slide } from "../types";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export const generateImageForSlide = async (prompt: string): Promise<string> => {
   try {
@@ -135,6 +135,9 @@ export const generateEducationalMaterials = async (params: SearchParams): Promis
       }
     });
 
+    if (!response.text) {
+      throw new Error("AI response text is empty");
+    }
     const content: EducationalContent = JSON.parse(response.text.trim());
     content.id = Math.random().toString(36).substr(2, 9);
     content.timestamp = Date.now();
